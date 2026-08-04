@@ -68,4 +68,4 @@ MIT License
 
 ## 👤 Autor
 
-[Seu Nome]
+[Moacyr Arantes]
