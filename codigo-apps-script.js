@@ -290,6 +290,10 @@ function buscarModalidadePNCP(ibge, modalidade, dataInicial, dataFinal, estado) 
 
         if (code === 200) {
           resposta = JSON.parse(r.getContentText());
+        } else if (code === 204) {
+          // 204 = No Content: consulta válida, mas sem resultados no período.
+          // NÃO é erro — vira uma resposta vazia normal.
+          resposta = { data: [] };
         } else if (code === 429) {
           ultimoErro = "HTTP 429 (limite de requisições do PNCP)";
           esperar(15, estado);
@@ -618,7 +622,22 @@ function criarGatilhoDiario() {
   }
   removerGatilhoDiario();
   ScriptApp.newTrigger("atualizarTodasLicitacoes").timeBased().atHour(8).everyDays(1).create();
-  ss.toast("Atualização automática diária ativada (~8h). Novas licitações serão enviadas para " + CONFIG.emailDestino + ". Se o Google pedir autorização, aceite para o gatilho funcionar.", "Sucesso");
+
+  // Confere se o gatilho realmente foi criado
+  let criados = 0;
+  try {
+    criados = ScriptApp.getProjectTriggers().filter(function (t) {
+      return t.getHandlerFunction() === "atualizarTodasLicitacoes";
+    }).length;
+  } catch (e) {
+    criados = 1; // sem permissão de leitura? assume que criou
+  }
+
+  if (criados > 0) {
+    ss.toast("✅ Atualização diária ATIVADA (1x/dia ~8h). O 1º disparo será amanhã às 8h. Para conferir: Extensões > Apps Script > ícone ⏰ (Gatilhos). Novas licitações irão para " + CONFIG.emailDestino + ".", "Sucesso");
+  } else {
+    ss.toast("Não consegui criar o gatilho. Verifique se você autorizou o script (rode 📧 Testar envio de e-mail uma vez).", "Erro");
+  }
 }
 
 /** Remove o gatilho diário */
@@ -916,6 +935,9 @@ function testarConexaoPNCP() {
       if (code === 200) {
         const j = JSON.parse(r.getContentText());
         registros = (j.data || []).length;
+      } else if (code === 204) {
+        // Sem resultados no período — resposta válida
+        status = "OK (sem dados)";
       } else {
         status = "ERRO " + code;
         erro = r.getContentText().substring(0, 120);

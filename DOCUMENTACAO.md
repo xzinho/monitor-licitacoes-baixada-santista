@@ -258,6 +258,10 @@ Erro 502/504 - Bad Gateway / Gateway Timeout
 Causa: Instabilidade do servidor do PNCP (frequente em 2026 — houve relatos públicos de indisponibilidade)
 Solução: Mesmo tratamento do 503 (retry automático). Use o menu "🔌 Testar conexão PNCP" para ver quais cidades estão com problema.
 
+Erro 204 - No Content
+Causa: NENHUMA — a API responde 204 quando não há licitações daquela modalidade no período (normal, ex.: Concorrência em cidades menores)
+Solução: O script v3.1+ trata 204 como resposta vazia válida (sem aviso, sem erro). Se aparecer "HTTP 204" na linha 3, o código da planilha está desatualizado — cole a versão nova.
+
 Erro 429 - Too Many Requests
 Causa: Muitas requisições em pouco tempo (rate limit ~60 req/h por IP)
 Solução: O script tenta 3 vezes com espera de até 15s; se persistir, pula a modalidade e registra aviso na linha 3. Aguardar 15-30 minutos antes de rodar de novo.

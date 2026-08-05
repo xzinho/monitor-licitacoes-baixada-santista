@@ -168,6 +168,14 @@ Cole este prompt:
 
 ---
 
+### Problema 8: "HTTP 204" nos avisos da linha 3 (agosto/2026)
+**Sintoma:** Após atualizar, aparecia "⚠️ Atenção: Concorrência: HTTP 204 | Inexigibilidade: HTTP 204" na linha 3 das abas.
+**Causa:** A API do PNCP responde HTTP 204 (No Content) quando não há resultados daquela modalidade no período. O script tratava qualquer código diferente de 200/429 como erro — 204 virou "falha" sem ser.
+**Solução:** Tratar 204 como resposta vazia válida (sem retry, sem aviso). Também ajustado o diagnóstico (📡) para mostrar "OK (sem dados)".
+**Aprendizado:** APIs usam 204 para "sem conteúdo" — não é erro, é resposta normal. Validado com 2 cenários de teste novos (64 testes no total).
+
+---
+
 ### Problema 7: Planilha "parou de funcionar" (agosto/2026)
 **Data:** 05/08/2026
 **Sintoma:** Abas das cidades ficavam vazias ou com "Nenhuma licitação encontrada no período."; dashboard zerado; "Atualizar Tudo" demorava e dava erro.
