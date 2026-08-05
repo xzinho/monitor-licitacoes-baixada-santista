@@ -24,9 +24,25 @@
  *   3. Diferente da versão antiga, este script NÃO apaga os
  *      dados anteriores quando a busca falha — ele mantém a
  *      última versão boa e escreve um aviso na linha 3.
+ *
+ * 📧 NOTIFICAÇÕES POR E-MAIL (v3.1):
+ *   - A cada atualização, e-mails com SOMENTE as licitações novas;
+ *   - Separados por cidade e em blocos de até CONFIG.maxItensPorEmail
+ *     (evita mensagens gigantes e bloqueio do Gmail);
+ *   - O script lembra o que já foi enviado (propriedades do script),
+ *     então rodar "Atualizar Tudo" várias vezes NÃO repete e-mails;
+ *   - Na primeira execução, ele só registra o histórico (não envia
+ *     o passado todo) — você recebe só o que publicar a partir daí;
+ *   - Para testar: menu 🏛️ Licitações > 📧 Testar envio de e-mail;
+ *   - Para mudar o destino: edite CONFIG.emailDestino.
  * 
- * VERSÃO: 3.0 (correção de estabilidade)
- * MUDANÇAS DA V3:
+ * VERSÃO: 3.1 (notificações por e-mail)
+ * MUDANÇAS DA V3.1:
+ *   - E-mail automático com licitações novas (por cidade, em blocos)
+ *   - Registro do que já foi enviado (sem e-mails duplicados)
+ *   - Primeira execução sem envio do histórico (modo "baseline")
+ *   - Menu "📧 Testar envio de e-mail" para validar o Gmail
+ * MUDANÇAS DA V3 (base estável):
  *   - Retry automático para 429/5xx/timeout (com espera limitada)
  *   - Dados anteriores NÃO são apagados quando a API falha
  *   - Paginação automática (captura TODOS os resultados, não só pág. 1)
@@ -54,7 +70,13 @@ const CONFIG = {
   tamanhoPagina: 50,            // registros por página (a API aceita de 10 a 500)
   maxPaginas: 5,                // máximo de páginas por modalidade (50 * 5 = 250 registros)
   delayEntreRequisicoes: 2000,  // pausa em ms entre chamadas (rate limit ~60 req/h)
-  orcamentoSegundos: 300        // orçamento total por execução (limite real: 360s p/ conta gratuita)
+  orcamentoSegundos: 300,       // orçamento total por execução (limite real: 360s p/ conta gratuita)
+
+  // 📧 Notificações por e-mail:
+  emailNotificacoes: true,      // false = desliga completamente o envio de e-mails
+  emailDestino: "mgarantes@gmail.com", // para quem enviar as novas licitações
+  maxItensPorEmail: 20,         // limite de licitações por e-mail (evita mensagens gigantes)
+  maxEmailsPorExecucao: 10      // limite de e-mails por execução (segurança extra)
 };
 
 /** Nome amigável da modalidade (para os avisos) */
@@ -78,6 +100,7 @@ function onOpen() {
       .addItem('🏙️ Atualizar Mongaguá', 'atualizarMongagua')
       .addSeparator()
       .addItem('🔌 Testar conexão PNCP', 'testarConexaoPNCP')
+      .addItem('📧 Testar envio de e-mail', 'testarEnvioEmail')
       .addSeparator()
       .addItem('⏰ Ativar atualização diária (8h)', 'criarGatilhoDiario')
       .addItem('⏰ Desativar atualização automática', 'removerGatilhoDiario')
@@ -121,7 +144,11 @@ function obterEstadoBusca() {
     fim: Date.now() + CONFIG.orcamentoSegundos * 1000, // prazo final
     avisos: [],            // avisos acumulados da execução
     cidadesOk: 0,
-    cidadesComFalha: 0
+    cidadesComFalha: 0,
+    baseline: !PropertiesService.getScriptProperties().getProperty("BASELINE_OK"), // 1ª execução (não envia histórico)
+    algumaBuscaOK: false,  // alguma cidade conseguiu buscar na API
+    novosPorCidade: [],    // itens novos encontrados, agrupados por cidade
+    emailsEnviados: 0      // contador de e-mails desta execução
   };
 }
 
@@ -173,8 +200,12 @@ function atualizarTodasLicitacoes() {
     estado.avisos.push("Dashboard: erro inesperado - " + e.message);
   }
 
+  finalizarExecucao(estado);
+
   let msg = estado.cidadesOk + " cidades atualizadas";
   if (estado.cidadesComFalha > 0) msg += ", " + estado.cidadesComFalha + " com avisos (ver linha 3 das abas e o rodapé do dashboard)";
+  if (estado.emailsEnviados > 0) msg += " | " + estado.emailsEnviados + " e-mail(s) enviado(s)";
+  else if (estado.algumaBuscaOK && !estado.baseline) msg += " | nenhuma novidade para enviar";
   ss.toast("Concluído: " + msg, "Resultado");
 }
 
@@ -197,8 +228,11 @@ function atualizarCidadeViaMenu(nomeCidade) {
   try {
     const res = atualizarCidade(nomeCidade, estado);
     atualizarDashboard(estado);
+    finalizarExecucao(estado);
     if (res.falhas.length === 0) {
-      ss.toast(nomeCidade + " atualizada!", "Sucesso");
+      let msg = nomeCidade + " atualizada!";
+      if (estado.emailsEnviados > 0) msg += " (" + estado.emailsEnviados + " e-mail(s) com novidades)";
+      ss.toast(msg, "Sucesso");
     } else {
       ss.toast(nomeCidade + ": " + res.falhas.length + " aviso(s) na busca. Ver linha 3 da aba.", "Atenção");
     }
@@ -304,6 +338,7 @@ function buscarModalidadePNCP(ibge, modalidade, dataInicial, dataFinal, estado) 
 /** Converte um item do JSON da API no formato usado pela planilha */
 function montarItem(item) {
   return {
+    idPNCP: item.numeroControlePNCP || (item.modalidadeNome + "|" + item.numeroCompra + "|" + item.dataPublicacaoPncp + "|" + (item.objetoCompra || "")),
     numeroCompra: item.numeroCompra || "-",
     modalidadeNome: item.modalidadeNome || "-",
     orgao: item.orgaoEntidade && item.orgaoEntidade.razaoSocial ? item.orgaoEntidade.razaoSocial : "-",
@@ -375,6 +410,8 @@ function atualizarCidade(nomeCidade, estado) {
   const temDados = todosDados.length > 0;
   const agora = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm:ss");
 
+  let novos = []; // licitações novas (para e-mail)
+
   if (temDados) {
     // Busca OK (total ou parcial): reconstrói a aba com os dados novos
     sheet.clear();
@@ -417,6 +454,37 @@ function atualizarCidade(nomeCidade, estado) {
     sheet.setColumnWidth(4, 450);
     sheet.getRange("D5:D").setWrap(true);
 
+    // ---- Detecção de novidades (para e-mail) ----
+    const idsVistos = lerIdsVistos(cidadeConfig.nome);
+    const conjuntoVistos = {};
+    for (let v = 0; v < idsVistos.length; v++) conjuntoVistos[idsVistos[v]] = true;
+
+    // IDs atuais (com deduplicação dentro da própria busca)
+    const idsAtuais = [];
+    const vistosAgora = {};
+    for (let t = 0; t < todosDados.length; t++) {
+      const chave = todosDados[t].idPNCP;
+      if (!vistosAgora[chave]) {
+        vistosAgora[chave] = true;
+        idsAtuais.push(chave);
+      }
+    }
+
+    // Novos = presentes na busca atual e ausentes do histórico salvo
+    if (!estado.baseline) {
+      const jaIncluido = {};
+      for (let t = 0; t < todosDados.length; t++) {
+        const chave = todosDados[t].idPNCP;
+        if (!conjuntoVistos[chave] && !jaIncluido[chave]) {
+          jaIncluido[chave] = true;
+          novos.push(todosDados[t]);
+        }
+      }
+    }
+
+    estado.novosPorCidade.push({ cidade: nomeCidade, itens: novos, totalExistente: todosDados.length });
+    gravarIdsVistos(cidadeConfig.nome, idsAtuais);
+
   } else if (falhas.length > 0) {
     // Busca falhou por completo: NÃO apagar os dados anteriores.
     // Mantém a última versão boa e escreve um aviso claro.
@@ -446,7 +514,10 @@ function atualizarCidade(nomeCidade, estado) {
     sheet.getRange("A5").setValue("Nenhuma licitação encontrada no período.");
   }
 
-  return { cidade: nomeCidade, total: todosDados.length, falhas: falhas };
+  // Marca que esta cidade conseguiu buscar na API (sucesso total ou parcial)
+  if (temDados || falhas.length === 0) estado.algumaBuscaOK = true;
+
+  return { cidade: nomeCidade, total: todosDados.length, falhas: falhas, novos: novos };
 }
 
 /** Escreve avisos na linha 3 da aba (ou limpa, se não houver avisos) */
@@ -547,7 +618,7 @@ function criarGatilhoDiario() {
   }
   removerGatilhoDiario();
   ScriptApp.newTrigger("atualizarTodasLicitacoes").timeBased().atHour(8).everyDays(1).create();
-  ss.toast("Atualização automática diária ativada (~8h). Se o Google pedir autorização, aceite para o gatilho funcionar.", "Sucesso");
+  ss.toast("Atualização automática diária ativada (~8h). Novas licitações serão enviadas para " + CONFIG.emailDestino + ". Se o Google pedir autorização, aceite para o gatilho funcionar.", "Sucesso");
 }
 
 /** Remove o gatilho diário */
@@ -563,6 +634,238 @@ function removerGatilhoDiario() {
   });
   triggers.forEach(function (t) { ScriptApp.deleteTrigger(t); });
   if (ss) ss.toast("Atualização automática desativada.", "Sucesso");
+}
+
+// ========== NOTIFICAÇÕES POR E-MAIL ==========
+
+/** Chave da propriedade onde ficam os IDs já vistos de uma cidade */
+function chavePropriedadeIds(cidade) {
+  return "IDS_" + String(cidade).replace(/[^A-Za-z0-9]/g, "");
+}
+
+/** Lê a lista de IDs já vistos de uma cidade (suporta divisão em blocos se for grande) */
+function lerIdsVistos(cidade) {
+  const base = chavePropriedadeIds(cidade);
+  const props = PropertiesService.getScriptProperties();
+  const unico = props.getProperty(base);
+  if (unico) {
+    try { return JSON.parse(unico); } catch (e) { return []; }
+  }
+  let ids = [];
+  let n = 0;
+  while (true) {
+    const p = props.getProperty(base + "_" + n);
+    if (!p) break;
+    try { ids = ids.concat(JSON.parse(p)); } catch (e) { /* ignora bloco corrompido */ }
+    n++;
+  }
+  return ids;
+}
+
+/** Grava a lista de IDs já vistos de uma cidade (divide em blocos se passar de 8 KB) */
+function gravarIdsVistos(cidade, ids) {
+  const base = chavePropriedadeIds(cidade);
+  const props = PropertiesService.getScriptProperties();
+
+  // Limpa versões antigas
+  props.deleteProperty(base);
+  let n = 0;
+  while (props.getProperty(base + "_" + n)) {
+    props.deleteProperty(base + "_" + n);
+    n++;
+  }
+
+  if (!ids || ids.length === 0) return;
+
+  const json = JSON.stringify(ids);
+  const limite = 8000; // limite seguro por propriedade (Google permite 9 KB)
+  if (json.length <= limite) {
+    props.setProperty(base, json);
+    return;
+  }
+
+  // Divide em blocos
+  let blocos = [], atual = [], tamanho = 0;
+  for (let i = 0; i < ids.length; i++) {
+    const custo = ids[i].length + 3;
+    if (atual.length > 0 && tamanho + custo > limite) {
+      blocos.push(atual);
+      atual = [];
+      tamanho = 0;
+    }
+    atual.push(ids[i]);
+    tamanho += custo;
+  }
+  if (atual.length > 0) blocos.push(atual);
+
+  for (let b = 0; b < blocos.length; b++) {
+    props.setProperty(base + "_" + b, JSON.stringify(blocos[b]));
+  }
+}
+
+/**
+ * Finaliza a execução: envia os e-mails de novidades (se houver)
+ * e marca a 1ª execução como concluída (baseline).
+ * Nunca lança erro — falhas de e-mail são registradas como avisos.
+ */
+function finalizarExecucao(estado) {
+  try {
+    enviarEmailsDeNovidades(estado);
+  } catch (e) {
+    console.error("finalizarExecucao (e-mail)", e);
+    estado.avisos.push("E-mails: erro inesperado - " + e.message);
+  }
+  if (estado.algumaBuscaOK) {
+    PropertiesService.getScriptProperties().setProperty("BASELINE_OK", "1");
+  }
+}
+
+/** Envia os e-mails de novidades, separados por cidade e em blocos */
+function enviarEmailsDeNovidades(estado) {
+  if (!estado || !CONFIG.emailNotificacoes || !estado.algumaBuscaOK) return;
+  const props = PropertiesService.getScriptProperties();
+
+  // 1ª execução (baseline): não envia o histórico — só um e-mail de confirmação (1x)
+  if (estado.baseline && !props.getProperty("EMAIL_ATIVACAO_ENVIADO")) {
+    let totalExistente = 0;
+    for (let i = 0; i < estado.novosPorCidade.length; i++) {
+      totalExistente += estado.novosPorCidade[i].totalExistente || 0;
+    }
+    try {
+      enviarEmailSimples(
+        "✅ Monitor de licitações ativado",
+        "O monitor de licitações da Baixada Santista foi ativado com sucesso.<br><br>" +
+        "Já havia <b>" + totalExistente + "</b> licitação(ões) publicada(s) no período atual — elas <b>não</b> foram enviadas.<br>" +
+        "A partir de agora, você receberá um e-mail a cada atualização com <b>somente as licitações novas</b>, separadas por cidade.<br><br>" +
+        "Caso queira desativar: menu 🏛️ Licitações > ⏰ Desativar atualização automática (e CONFIG.emailNotificacoes = false)."
+      );
+      props.setProperty("EMAIL_ATIVACAO_ENVIADO", "1");
+      estado.emailsEnviados++;
+    } catch (e) {
+      console.error("E-mail de ativação", e);
+      estado.avisos.push("E-mail de ativação falhou: " + e.message);
+    }
+    return;
+  }
+
+  // Execuções normais: e-mails com as novidades, por cidade e em blocos
+  for (let i = 0; i < estado.novosPorCidade.length; i++) {
+    const bloco = estado.novosPorCidade[i];
+    if (!bloco.itens || bloco.itens.length === 0) continue;
+
+    if (estado.emailsEnviados >= CONFIG.maxEmailsPorExecucao) {
+      estado.avisos.push("Limite de e-mails por execução atingido (" + CONFIG.maxEmailsPorExecucao + "). O restante será enviado na próxima atualização.");
+      break;
+    }
+
+    const partes = dividirEmPartes(bloco.itens, CONFIG.maxItensPorEmail);
+    for (let p = 0; p < partes.length; p++) {
+      if (estado.emailsEnviados >= CONFIG.maxEmailsPorExecucao) {
+        estado.avisos.push("Limite de e-mails por execução atingido (" + CONFIG.maxEmailsPorExecucao + "). O restante será enviado na próxima atualização.");
+        break;
+      }
+      try {
+        enviarEmailNovidades(bloco.cidade, partes[p], partes.length > 1 ? (p + 1) : null, partes.length);
+        estado.emailsEnviados++;
+      } catch (e) {
+        console.error("E-mail de " + bloco.cidade, e);
+        estado.avisos.push("E-mail de " + bloco.cidade + " falhou: " + e.message);
+      }
+    }
+  }
+}
+
+/** Divide uma lista em blocos de no máximo `tamanhoMax` itens */
+function dividirEmPartes(itens, tamanhoMax) {
+  const partes = [];
+  for (let i = 0; i < itens.length; i += tamanhoMax) {
+    partes.push(itens.slice(i, i + tamanhoMax));
+  }
+  return partes;
+}
+
+/** Escapa caracteres especiais de HTML (evita e-mail quebrado/HTML injection) */
+function escaparHtml(texto) {
+  return String(texto)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/** Formata valor em moeda brasileira (com fallback seguro) */
+function formatarMoeda(valor) {
+  const v = Number(valor) || 0;
+  try {
+    return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  } catch (e) {
+    return "R$ " + v.toFixed(2).replace(".", ",");
+  }
+}
+
+/** Monta e envia o e-mail de novidades de uma cidade (um bloco) */
+function enviarEmailNovidades(cidade, itens, parte, totalPartes) {
+  const quando = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm");
+  let linhas = "";
+  for (let i = 0; i < itens.length; i++) {
+    const item = itens[i];
+    let objeto = String(item.objeto);
+    if (objeto.length > 200) objeto = objeto.substring(0, 200) + "…";
+    const link = (item.link && item.link !== "-")
+      ? '<a href="' + escaparHtml(item.link) + '">Acessar</a>'
+      : "—";
+    linhas += "<tr>" +
+      "<td>" + escaparHtml(item.modalidadeNome) + "</td>" +
+      "<td>" + escaparHtml(item.numeroCompra) + "</td>" +
+      "<td>" + escaparHtml(item.orgao) + "</td>" +
+      "<td>" + escaparHtml(objeto) + "</td>" +
+      "<td style=\"white-space:nowrap\">" + formatarMoeda(item.valor) + "</td>" +
+      "<td style=\"white-space:nowrap\">" + escaparHtml(item.dataPub) + "</td>" +
+      "<td style=\"white-space:nowrap\">" + escaparHtml(item.dataAbertura) + "</td>" +
+      "<td style=\"white-space:nowrap\">" + escaparHtml(item.dataEncerramento) + "</td>" +
+      "<td>" + escaparHtml(item.situacao) + "</td>" +
+      "<td>" + link + "</td>" +
+      "</tr>";
+  }
+
+  const sufixo = parte ? " (parte " + parte + "/" + totalPartes + ")" : "";
+  const assunto = "🔔 " + itens.length + " nova(s) licitação(ões) em " + cidade + sufixo;
+
+  const corpo = "<html><body style=\"font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#111827\">" +
+    "<h2 style=\"color:#1a56db\">🔔 Novas licitações em " + escaparHtml(cidade) + "</h2>" +
+    "<p>" + itens.length + " nova(s) licitação(ões) publicada(s) no PNCP" + sufixo + ":</p>" +
+    "<table border=\"1\" cellpadding=\"6\" cellspacing=\"0\" style=\"border-collapse:collapse;font-size:12px\">" +
+    "<thead><tr style=\"background:#1a56db;color:#fff\">" +
+    "<th>Modalidade</th><th>Nº</th><th>Órgão</th><th>Objeto</th><th>Valor</th><th>Pub.</th><th>Início</th><th>Fim</th><th>Situação</th><th>Link</th>" +
+    "</tr></thead><tbody>" + linhas + "</tbody></table>" +
+    "<p style=\"font-size:11px;color:#6b7280\">Gerado por Monitor de Licitações — Baixada Santista em " + quando + ".<br>" +
+    "Fonte: Portal Nacional de Contratações Públicas (PNCP).</p>" +
+    "</body></html>";
+
+  MailApp.sendEmail({ to: CONFIG.emailDestino, subject: assunto, htmlBody: corpo });
+}
+
+/** Envia um e-mail simples (usado no teste e na ativação) */
+function enviarEmailSimples(assunto, corpoHtml) {
+  MailApp.sendEmail({ to: CONFIG.emailDestino, subject: assunto, htmlBody: corpoHtml });
+}
+
+/** Envia um e-mail de teste para confirmar que o Gmail está funcionando */
+function testarEnvioEmail() {
+  const ss = obterPlanilha();
+  try {
+    enviarEmailSimples(
+      "📧 Teste do monitor de licitações",
+      "Este é um e-mail de teste do seu monitor de licitações da Baixada Santista.<br><br>" +
+      "Se você está lendo isto, o envio de e-mails está funcionando! ✔<br><br>" +
+      "A partir da próxima atualização, você receberá só as licitações <b>novas</b>, separadas por cidade."
+    );
+    ss.toast("E-mail de teste enviado para " + CONFIG.emailDestino, "Sucesso");
+  } catch (e) {
+    ss.toast("Falha ao enviar e-mail de teste: " + e.message, "Erro");
+    console.error("testarEnvioEmail", e);
+  }
 }
 
 // ========== DIAGNÓSTICO DE CONEXÃO ==========

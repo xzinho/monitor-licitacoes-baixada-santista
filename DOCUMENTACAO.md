@@ -8,8 +8,9 @@
 4. [Modalidades](#modalidades)
 5. [API do PNCP](#api-do-pncp)
 6. [Estrutura da Planilha](#estrutura-da-planilha)
-7. [Roadmap](#roadmap)
-8. [Erros Comuns](#erros-comuns)
+7. [Notificações por E-mail](#notificações-por-e-mail)
+8. [Roadmap](#roadmap)
+9. [Erros Comuns](#erros-comuns)
 
 ---
 
@@ -195,6 +196,29 @@ Cores por Situação
 ⬜ Branco #ffffff → Outros
 Cor do Cabeçalho
 Azul principal: #1a56db
+📧 Notificações por E-mail
+Como funciona
+ A cada atualização (manual ou automática), o script compara as licitações encontradas com o histórico do que já foi visto (guardado nas propriedades do script — invisível, não mexe nas abas).
+ Só o que é NOVO é enviado por e-mail, separado por cidade.
+ Se uma cidade tiver muitas novidades, o e-mail é dividido em blocos de até CONFIG.maxItensPorEmail (padrão 20) — nada de mensagem gigante.
+ Rodar "Atualizar Tudo" várias vezes não repete e-mails.
+
+Configuração (em CONFIG)
+ emailNotificacoes: true — false desliga tudo
+ emailDestino: "mgarantes@gmail.com" — para quem enviar
+ maxItensPorEmail: 20 — licitações por e-mail
+ maxEmailsPorExecucao: 10 — segurança (limite por execução)
+
+Ativação
+ 1. Menu 🏛️ Licitações > 📧 Testar envio de e-mail (confirma que o Gmail funciona)
+ 2. Menu 🏛️ Licitações > ⏰ Ativar atualização diária (8h) — na 1ª vez o Google pede autorização
+ 3. Na 1ª execução com dados, você recebe um e-mail de ativação; o histórico já publicado NÃO é enviado
+
+Limites do Google (por que funciona)
+ Apps Script gratuito: até 100 destinatários/dia pelo MailApp — enviamos para 1 destinatário.
+ Mensagens curtas (máx. 20 licitações cada) — muito abaixo do limite de tamanho do Gmail.
+ Se o envio falhar, o script NÃO quebra: registra aviso e segue (a planilha continua atualizando).
+
 🗺️ Roadmap
 ✅ Fase 1 - MVP (Concluído)
  Integração com API PNCP
@@ -204,10 +228,11 @@ Azul principal: #1a56db
  Formatação profissional
  Menu personalizado
  Documentação no GitHub
-🔄 Fase 2 - Melhorias (Próxima)
- Gatilho automático diário (8h da manhã)
- Alerta por e-mail de novas licitações
- Filtro por palavra-chave (ex: "asfalto", "medicamento")
+✅ Fase 2 - Melhorias (Parcialmente concluída)
+ Gatilho automático diário (8h da manhã) ✅
+ Alerta por e-mail de novas licitações (separados por cidade, em blocos) ✅
+ Filtro por palavra-chave (ex: "asfalto", "medicamento") — próximo passo
+ Filtro por valor mínimo
  Filtro por valor mínimo
  Adicionar mais 5 prefeituras
  Aba "Favoritos" para marcar licitações interessantes

@@ -150,6 +150,24 @@ Cole este prompt:
 
 ---
 
+### Novidade: Alertas por e-mail com licitações novas (v3.1, agosto/2026)
+**Pedido do usuário:** "enviar no e-mail as novas licitações toda vez que tiver dados novos — mas não enviar todas de uma vez (fica extenso e o Gmail recusa); enviar picado por prefeituras ou modalidades; proteger o script que está funcionando."
+
+**Decisões de design:**
+- **1 e-mail por cidade**, com no máximo 20 licitações cada (`CONFIG.maxItensPorEmail`). Se passar, divide em "parte 1/2, 2/2". Nunca manda mensagem gigante.
+- **Dedup por ID** (`numeroControlePNCP`): o script guarda nas propriedades do script (invisíveis, não mexem nas abas) a lista do que já foi visto e só envia o que é novo. Rodar "Atualizar Tudo" 10 vezes não repete e-mail.
+- **Modo baseline na 1ª execução:** o histórico já publicado NÃO é enviado (evita bombardeio de e-mails no primeiro dia). Só um e-mail curto de ativação.
+- **Tolerância a falhas:** envio de e-mail em `try/catch` — se o Gmail falhar, a atualização da planilha continua normal e um aviso aparece.
+- **Guardas de segurança:** `CONFIG.maxEmailsPorExecucao` (10), escape de HTML nos e-mails, e gravação de IDs em blocos de 8 KB (o Google limita cada propriedade a 9 KB).
+- **Validação:** 14 cenários simulados (57 testes no total), incluindo: baseline, novidades por cidade, repetição sem novidades, divisão em blocos, falha do Gmail, falha da API preservando histórico e gravação/leitura de IDs grandes.
+
+**Para o usuário ativar (feito no menu da planilha):**
+1. 🏛️ Licitações > 📧 Testar envio de e-mail
+2. 🏛️ Licitações > ⏰ Ativar atualização diária (8h) — pede autorização do Google na 1ª vez
+3. Destino padrão: `mgarantes@gmail.com` (editar `CONFIG.emailDestino`)
+
+---
+
 ### Problema 7: Planilha "parou de funcionar" (agosto/2026)
 **Data:** 05/08/2026
 **Sintoma:** Abas das cidades ficavam vazias ou com "Nenhuma licitação encontrada no período."; dashboard zerado; "Atualizar Tudo" demorava e dava erro.
@@ -217,7 +235,7 @@ Cole este prompt:
 - [ ] Formatar linhas alternadas (zebra) para melhor leitura
 
 ### Médio Prazo (1-3 meses)
-- [ ] Sistema de alertas por e-mail
+- [x] Sistema de alertas por e-mail (v3.1 — novidades por cidade, em blocos de 20)
 - [ ] Filtro por palavra-chave
 - [ ] Filtro por valor mínimo/máximo
 - [ ] Adicionar 10 novas prefeituras
@@ -260,11 +278,11 @@ Cole este prompt:
 ## 📊 Métricas do Projeto
 
 - **Data de início:** [colocar data]
-- **Linhas de código:** ~670 (v3.0)
+- **Linhas de código:** ~870 (v3.1)
 - **Cidades monitoradas:** 5
 - **Modalidades:** 4
 - **Custo:** R$ 0,00
-- **Status:** MVP funcional (v3.0 — estabilizado contra instabilidade da API) ✅
+- **Status:** MVP funcional (v3.1 — estabilizado contra instabilidade da API + alertas por e-mail) ✅
 
 ---
 
