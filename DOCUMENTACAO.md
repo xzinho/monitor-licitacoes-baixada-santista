@@ -128,10 +128,14 @@ text
 
 ### Regras Importantes
 - ⚠️ **Rate limit:** ~60 requisições/hora por IP
-- ⚠️ **Erro 429:** Aguardar 15-30 min
+- ⚠️ **Erro 429:** O script tenta 3 vezes com espera de até 15s; se persistir, pula a modalidade e registra aviso (não trava mais a execução)
+- ⚠️ **Erros 5xx (502/503/504):** Instabilidade do PNCP (frequente em 2026). O script tenta 3 vezes com espera de 5s; se continuar, **mantém os dados anteriores da aba**
 - ⚠️ **Erro 400:** Parâmetros inválidos
-- ⚠️ **tamanhoPagina mínimo:** 10
+- ⚠️ **tamanhoPagina mínimo:** 10 (o script usa 50)
 - ✅ **Aguardar 2 segundos** entre requisições
+- ✅ **Paginação automática:** o script percorre todas as páginas (até `CONFIG.maxPaginas` = 5 por modalidade) para não perder registros
+- ✅ **Dados preservados:** quando a busca falha, a última versão boa da aba NÃO é apagada — um aviso fica na linha 3
+- ✅ **Orçamento de tempo:** a execução se limita a `CONFIG.orcamentoSegundos` (300s) para nunca estourar o limite de 6 minutos do Apps Script
 
 ### Campos Retornados
 ```json
@@ -162,6 +166,7 @@ Santos
 São Vicente
 Cubatão
 Mongaguá
+Linha 3 de cada aba de cidade: reservada para avisos da última atualização (ex.: "⚠️ Atenção: Pregão: HTTP 502..."). Quando a busca é limpa, fica vazia.
 Colunas de cada aba de cidade
 Coluna	Dado	Formato
 A	Nº Compra	Texto
@@ -222,12 +227,16 @@ Azul principal: #1a56db
 🐛 Erros Comuns
 Erro 503 - Service Unavailable
 Causa: Servidor do PNCP fora do ar
-Solução: Aguardar 5-10 minutos e tentar novamente
+Solução: O script tenta 3 vezes sozinho; se persistir, aguardar 5-10 minutos e tentar novamente. Os dados anteriores da aba são mantidos.
+
+Erro 502/504 - Bad Gateway / Gateway Timeout
+Causa: Instabilidade do servidor do PNCP (frequente em 2026 — houve relatos públicos de indisponibilidade)
+Solução: Mesmo tratamento do 503 (retry automático). Use o menu "🔌 Testar conexão PNCP" para ver quais cidades estão com problema.
 
 Erro 429 - Too Many Requests
-Causa: Muitas requisições em pouco tempo
-Solução: Aguardar 15-30 minutos
-Prevenção: Manter delay de 2s entre requisições
+Causa: Muitas requisições em pouco tempo (rate limit ~60 req/h por IP)
+Solução: O script tenta 3 vezes com espera de até 15s; se persistir, pula a modalidade e registra aviso na linha 3. Aguardar 15-30 minutos antes de rodar de novo.
+Prevenção: Manter delay de 2s entre requisições (CONFIG.delayEntreRequisicoes)
 
 Erro 400 - Bad Request
 Causa: Parâmetros inválidos
@@ -243,13 +252,15 @@ Solução: Rodar diagnóstico para descobrir nomes corretos
 
 Erro "Exceeded maximum execution time"
 Causa: Script demorou mais de 6 minutos
-Solução: Reduzir período de busca ou dividir em partes
+Solução: Já tratado na v3: janela padrão de 7 dias (CONFIG.diasBusca), retry curto e orçamento de tempo de 300s (CONFIG.orcamentoSegundos). Se ainda ocorrer, reduza diasBusca.
 
 🎨 Padrões de Design
 Emojis usados no menu
 🏛️ Licitações (menu principal)
 🔄 Atualizar Tudo
 🏙️ Atualizar cidade específica
+🔌 Testar conexão PNCP
+⏰ Ativar/Desativar atualização diária
 📊 Dashboard
 Cores institucionais
 Primária: #1a56db (azul)

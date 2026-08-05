@@ -150,6 +150,28 @@ Cole este prompt:
 
 ---
 
+### Problema 7: Planilha "parou de funcionar" (agosto/2026)
+**Data:** 05/08/2026
+**Sintoma:** Abas das cidades ficavam vazias ou com "Nenhuma licitação encontrada no período."; dashboard zerado; "Atualizar Tudo" demorava e dava erro.
+**Investigação (o que foi feito):**
+- A API oficial do PNCP (`/api/consulta/v1/contratacoes/publicacao`) foi testada ao vivo: o endpoint e os campos continuam os mesmos, MAS a API está instável — em testes do mesmo dia, São Vicente respondeu 502 e uma consulta de Dispensa respondeu 500 (há relatos públicos de indisponibilidade em 2026).
+- O código antigo só tratava erros 200 e 429; qualquer 502/503/504/timeout virava retorno vazio.
+- Ao receber retorno vazio, o script APAGAVA a aba inteira e escrevia "Nenhuma licitação encontrada" — destruindo os dados bons anteriores no primeiro soluço da API.
+- A janela de 30 dias + retry de 30s por chamada estourava o limite de 6 minutos do Apps Script (problema antigo que tinha sido resolvido com 7 dias, mas o código tinha voltado para 30).
+- O script não fazia paginação: só buscava a página 1 (50 itens), perdendo registros em modalidades de alto volume (ex.: dispensa).
+
+**Solução (versão 3.0):**
+- Retry automático para 429/5xx/timeout, com espera curta e limitada (não trava mais a execução);
+- **Dados anteriores preservados** quando a busca falha — aviso claro na linha 3 da aba;
+- Paginação automática (até `CONFIG.maxPaginas` = 5 páginas por modalidade);
+- Janela padrão de 7 dias (`CONFIG.diasBusca`) + orçamento de tempo de 300s (`CONFIG.orcamentoSegundos`) — nunca mais estoura os 6 min;
+- Menu novo: "🔌 Testar conexão PNCP" (diagnóstico por cidade) e "⏰ Ativar atualização diária (8h)" (gatilho automático);
+- Lógica validada com 27 testes simulando API ok, 502, 429, API fora do ar, vazio real e paginação — todos passando.
+
+**Aprendizado:** Nunca apagar dados bons por causa de erro transitório da fonte; sempre distinguir "sem resultados" de "falha na busca"; testar o script contra os modos de falha reais da API, não só o caminho feliz.
+
+---
+
 ## 💡 Aprendizados Técnicos
 
 ### Sobre a API do PNCP
@@ -189,8 +211,8 @@ Cole este prompt:
 ## 🔮 Próximas Ideias
 
 ### Curto Prazo (Próximos Passos)
-- [ ] Testar todas as 5 cidades juntas
-- [ ] Configurar gatilho automático (todo dia às 8h)
+- [x] Testar todas as 5 cidades juntas (validado por simulação; testar na planilha real)
+- [x] Configurar gatilho automático (todo dia às 8h) — menu 🏛️ Licitações > ⏰ Ativar atualização diária
 - [ ] Adicionar coluna com link direto para o edital no PNCP
 - [ ] Formatar linhas alternadas (zebra) para melhor leitura
 
@@ -238,11 +260,11 @@ Cole este prompt:
 ## 📊 Métricas do Projeto
 
 - **Data de início:** [colocar data]
-- **Linhas de código:** ~300
+- **Linhas de código:** ~670 (v3.0)
 - **Cidades monitoradas:** 5
 - **Modalidades:** 4
 - **Custo:** R$ 0,00
-- **Status:** MVP funcional ✅
+- **Status:** MVP funcional (v3.0 — estabilizado contra instabilidade da API) ✅
 
 ---
 
