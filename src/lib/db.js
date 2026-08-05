@@ -3,12 +3,12 @@ import path from 'path'
 import crypto from 'crypto'
 
 const DATA_DIR = path.join(process.cwd(), 'data')
+// Na Vercel, usar /tmp (que é writeable) em vez de process.cwd() (que é read-only)
+const isVercel = process.env.VERCEL === '1'
+const DATA_DIR = isVercel 
+  ? '/tmp/licitalert-data'
+  : path.join(process.cwd(), 'data')
 const DB_FILE = path.join(DATA_DIR, 'db.json')
-
-// Ensure data directory exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true })
-}
 
 // Default database structure
 const DEFAULT_DB = {
