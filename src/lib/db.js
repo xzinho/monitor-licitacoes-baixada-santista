@@ -2,13 +2,22 @@ import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
 
-const DATA_DIR = path.join(process.cwd(), 'data')
 // Na Vercel, usar /tmp (que é writeable) em vez de process.cwd() (que é read-only)
 const isVercel = process.env.VERCEL === '1'
-const DATA_DIR = isVercel 
+const DATA_DIR = isVercel
   ? '/tmp/licitalert-data'
   : path.join(process.cwd(), 'data')
 const DB_FILE = path.join(DATA_DIR, 'db.json')
+
+// Garante que a pasta de dados existe antes de escrever
+// (necessário na Vercel, onde /tmp começa vazio a cada deploy)
+function ensureDir() {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true })
+  } catch (e) {
+    console.error('DB mkdir error:', e)
+  }
+}
 
 // Default database structure
 const DEFAULT_DB = {
@@ -31,6 +40,7 @@ function readDb() {
 
 function writeDb(db) {
   try {
+    ensureDir()
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2))
   } catch (e) {
     console.error('DB write error:', e)
